@@ -1,5 +1,5 @@
 package PJob::Client;
-our $VERSION = '0.17';
+our $VERSION = '0.19';
 
 
 
@@ -26,22 +26,51 @@ has 'job' => (
     default => sub { [] },
 );
 
-sub run {
+has '_cqueue' => (
+    is  => 'rw',
+    isa => 'ArrayRef',
+    default => sub { [] },
+);
+
+sub BUILD {
     my $self = shift;
-    my ($server, $port) = $self->get_remote;
+    $self->{_queued} = 0;
+}
+
+sub run{
+    shift->_run;
+}
+
+sub run_queue {
+    my $self = shift;
+    $self->{_queued} = 1;
+    $self->_run;
+}
+
+sub queue_command {
+    my $self = shift;
+    push @{$self->_cqueue}, @_;
+    return $self;
+}
+
+sub _run {
+    my $self = shift;
+    my $sub_for_input = sub {$self->_get_input_interactive(@_)};
+    $sub_for_input = sub { $self->_get_input_queue(@_) } if $self->{_queued};
+    my ($server, $port) = $self->_get_remote;
     $self->{_session} = POE::Component::Client::TCP->new(
         RemoteAddress => $server,
         RemotePort    => $port,
         Connected     => sub { $self->_connected(@_) },
-        ServerInput   => sub { $self->_get_input(@_) },
         Disconnected  => sub { $self->_disconnected(@_) },
         ServerError   => sub { $self->_server_error(@_) },
+        ServerInput   => $sub_for_input,
     );
     POE::Kernel->run();
-    exit;
+    return $self;
 }
 
-sub get_remote {
+sub _get_remote {
     my $self = shift;
 
     my ($server, $port) = split ':', $self->server, 2;
@@ -58,7 +87,7 @@ sub _connected {
     print "Connected at ${peer_addr}:${peer_port}\n";
 }
 
-sub _get_input {
+sub _get_input_interactive {
     my $self  = shift;
     my $input = $_[ARG0];
     if ($input eq '.') {
@@ -71,6 +100,25 @@ sub _get_input {
         print $input, "\n";
     }
 }
+
+sub _get_input_queue {
+    my $self = shift;
+    my ($input,$heap) = @_[ARG0,HEAP];
+    if($input eq '.'){
+        if(! scalar @{$self->_cqueue}){
+            $heap->{server}->put('quit');
+            return;
+        }
+        my $command = shift @{$self->_cqueue};
+        chomp $command;
+        return unless $command;
+        $heap->{server}->put($command);
+    }
+    else{
+        print $input, "\n";
+    }
+}
+
 
 sub _disconnected {
     my $self = shift;
@@ -88,6 +136,9 @@ sub _server_error {
     print "\t   Reason\t$sexit\n";
     $_[KERNEL]->yield('shutdown');
 }
+
+no Any::Moose;
+__PACKAGE__->meta->make_immutable;
 1;
 
 __END__
@@ -95,7 +146,7 @@ __END__
 
 =head1 NAME
     
-    PJob::Client -- Simple PJob client for PJob Server
+PJob::Client -- Simple PJob client for PJob Server
 
 =head1 SINOPISYS
 
@@ -126,16 +177,16 @@ run a interative client
 =back
 
 =head1 TODO
-    
-B<run_queue>: run a serial of commands
+
+Add ANSIColor support
 
 =head1 SEE ALSO
     
-    L<POE>,L<Any::Moose>,L<PJob::Server>
+L<POE::Component::Client::TCP>,L<Any::Moose>,L<PJob::Server>
 
 =head1 AUTHOR
 
-    woosley.xu<redicaps@gmail.com>
+woosley.xu<woosley.xu@gmail.com>
 
 =head1 COPYRIGHT & LICENSE
 

@@ -1,6 +1,5 @@
 package PJob::Server;
-our $VERSION = '0.17';
-
+our $VERSION = '0.19';
 
 
 our $ALIAS = "POE JOB SERVER, Version: $VERSION";
@@ -12,8 +11,15 @@ use Scalar::Util qw/reftype/;
 use List::Util qw/first/;
 use List::MoreUtils qw/uniq/;
 use POE qw/Component::Server::TCP Wheel::Run/;
-
 #use Smart::Comments;
+use constant {
+    OUTPUT    => 'Out',
+    ERROR     => 'Err',
+    NOSUCHJOB => 'No Such A Job',
+    NOMORECON => 'Sorry, no more connection on this server',
+    NOTALLOWD => 'Sorry, you are not allowed on this server',
+    NOCLIEJOB => 'Sorry, no job found for you on this server',
+};
 
 has 'jobs' => (
     is      => 'rw',
@@ -87,6 +93,8 @@ sub add() {
 sub run {
     my $self = shift;
 
+    $self->_check_jobs;
+    $self->_append_jobs;
     $self->_log_redirect;
     $self->{_clients} = 0;
     $self->{_session} = POE::Component::Server::TCP->new(
@@ -96,8 +104,8 @@ sub run {
         ClientConnected    => sub { $self->_client_connect(@_) },
         ClientDisconnected => sub { $self->_client_disconnected(@_) },
         InlineStates       => {
-            job_stdout => sub { $self->send_to_client("Out", @_) },
-            job_stderr => sub { $self->send_to_client("Err", @_) },
+            job_stdout => sub { $self->send_to_client(OUTPUT, @_) },
+            job_stderr => sub { $self->send_to_client(ERROR,  @_) },
             job_close  => sub { $self->_close(@_) },
             job_signal => sub { $self->_sigchld(@_) },
             usage      => sub { $self->_usage(@_) },
@@ -110,18 +118,24 @@ sub run {
 
 # print usage information
 sub _usage {
-    my $self             = shift;
-    my $client           = $_[HEAP]->{client};
-    my $remote_ip        = $_[HEAP]->{remote_ip};
-    my $allowed_programs = $self->job_table->{$remote_ip}
-      || $self->job_table->{'*'};
+    my $self         = shift;
+    my $client       = $_[HEAP]->{client};
+    my $remote_ip    = $_[HEAP]->{remote_ip};
+    my $allowed_jobs = $self->job_table->{$remote_ip};
 
     my $usage_str;
-    if ($allowed_programs) {
-        $usage_str = 'Usage: ' . join ' ', sort keys %{$self->jobs};
+    if ($self->_dispatched) {
+        if (@{$allowed_jobs}) {
+            $usage_str = 'Usage: ' . join ' ', sort @{$allowed_jobs};
+        }
+        else {
+            $usage_str = ERROR . "\t" . NOCLIEJOB;
+            $client->put($usage_str);
+            $_[KERNEL]->yield("shutdown");
+        }
     }
     else {
-        $usage_str = 'Ooops, no jobs found for you on this server';
+        $usage_str = 'Usage: ' . join ' ', sort keys %{$self->jobs};
     }
     $client->put($usage_str);
     $client->put('.');
@@ -145,8 +159,18 @@ sub _spawn {
         return;
     }
 
-    my $program = $self->jobs->{$input};
+    $_[KERNEL]->yield('usage') if $input =~ /^usage$/i;
+
+    my $program;
+    if ($self->_dispatched) {
+        $program = first { $_ eq $input } $self->job_table->{$remote_ip};
+    }
+    else {
+        $program = $self->jobs->{$input};
+    }
+
     unless (defined $program) {
+        $client->put(ERROR . "\t" . NOSUCHJOB);
         $_[KERNEL]->yield("usage");
         return;
     }
@@ -166,17 +190,18 @@ sub _spawn {
     #just the program is enough right now. Feature can be added if necessary
     $self->_pid->{$kid->PID} = $program;
     $_[KERNEL]->sig_child($kid->PID, "job_signal");
-    $client->put("Job $program/" . $kid->PID . " started.");
+    $client->put("Job $program :::" . $kid->PID . " started.");
 }
 
 sub send_to_client {
+### @_ : @_
     my $self = shift;
     my $mark = shift;
 
     $_[HEAP]->{client}->put($mark . "\t" . $_[ARG0]);
 }
 
-# not sure if it it needed
+# not sure if it is needed
 sub error_event {
     my $self = shift;
 
@@ -192,7 +217,7 @@ sub _sigchld {
     if ($exit != 0) {
         $exit >>= 8;
     }
-    $_[HEAP]->{client}->put("$program/$pid exited with status $exit");
+    $_[HEAP]->{client}->put("Job $program :::$pid exited with status $exit");
     $_[HEAP]->{client}->put('.');
     delete $_[HEAP]->{job}->{$_[HEAP]->{client}};
     delete $self->_pid->{$pid};
@@ -223,25 +248,30 @@ sub _client_connect {
     my $remote_port = $heap->{remote_port};
     my $allow_hosts = $self->allowed_hosts;
 
+    # reached max connection
     if ($self->max_connections > 0) {
         if ($self->{_clients} >= $self->max_connections) {
-            $heap->{client}->put("No more connections on this server");
+            $self->send_to_client(ERROR, NOMORECON);
+
+#            $heap->{client}->put("No more connections on this server");
             $kernel->yield('shutdown');
             return;
         }
     }
     $self->{_clients}++;
 
-    if ($allow_hosts || $self->_dispatched) {
+    # not allowed on this server
+    if (@{$allow_hosts} || $self->_dispatched) {
         if (!first { $remote_ip eq $_ } @{$allow_hosts},
             keys %{$self->job_table})
         {
-            $heap->{client}->put("You are not allowed on this server");
+            $heap->{client}->put(ERROR . "\t" . NOTALLOWD);
             $kernel->yield('shutdown');
             return;
         }
     }
 
+    # allowed server
     $kernel->yield('usage');
     $self->log(*STDOUT,
         "CONNECTION FROM ${remote_ip}:${remote_port} ESTABLISHED\n");
@@ -259,10 +289,11 @@ sub _client_disconnected {
 sub log {
     my $self = shift;
     my ($fh, $output) = @_;
+    chomp $output;
 
     return unless $output;
     my $now = strftime "%y/%m/%d %H:%M:%S", localtime;
-    print $fh "$now\t$output";
+    print $fh "$now\t$output\n";
 }
 
 sub job_dispatch {
@@ -296,13 +327,32 @@ sub job_dispatch {
     }
 }
 
-sub _{
+# Called before start the server. Dispatch the jobs for $self->allowed_hosts
+sub _append_jobs {
+    my $self      = shift;
+    my $comm_jobs = delete $self->job_table->{'*'};
+    foreach my $host (@{$self->allowed_hosts}) {
+        my @all = uniq @{$self->job_table->{$host}}, @{$comm_jobs};
+        $self->job_table->{$host} = [@all];
+    }
+
+}
+
+sub _check_jobs {
+    my $self = shift;
+    if(my $c = first { $_ =~ /^usage|quit$/i } keys %{$self->jobs}){
+        $self->log(*STDERR, "'$c' is defined by default, choose another one");
+        exit 1;
+    }
+}
+
+sub _ {
     my $output = shift;
     $output = '\.' if $output =~ /^\.$/;
     return $output;
 }
 
-no Moose;
+no Any::Moose;
 __PACKAGE__->meta->make_immutable;
 1;
 __END__
@@ -311,7 +361,7 @@ __END__
 
 =head1 NAME
 
-    PJob::Server --- Simple POE Job Server 
+PJob::Server --- Simple POE Job Server 
 
 =head1 SINOPISYS
 
@@ -324,7 +374,7 @@ __END__
 
 =head1 DESCRIPTION
     
-    PJob::Server is a simple POE Job Server module, it provide you some api to write a job server very quickly.
+PJob::Server is a simple POE Job Server module, it provide you some api to write a job server very quickly.
 
 =over 
 
@@ -346,23 +396,28 @@ add some programs, it receive both hashref and scalar. The key of the hashref is
 =item B<job_dispatch>
 
     $ser->job_dispatch('127.0.0.1' => [qw/ls ps/,{cat => 'cat file'}], '*' => ['pwd']);
+    
+Dispatch available job to clients, receive client ip and its job table. * means common jobs which can be dispatched to all clients. Job table should be a arrayref. Jobs must be defined by $self->add except the situation that the element is a hashref, at this time, $self->add is called to add new job. 
 
-dispatch available job to clients, receive client ip and its job table. * means common jobs which can be dispatched to all clients. Job table should be a arrayref. Jobs must be defined by $self->add except the situation that the element is a hashref, at this time, $self->add is called to add new job. 
-
+Any hosts dispatched with job_dispatch is considered to be an allowed host.
 
 =item B<run>
 
 run the server, no argument needed.
 
+=item B<quit/usage>
+
+Use 'quit' to disconnect with the server. Use 'usage' to get avaiable commands
+
 =back
 
 =head1 SEE ALSO
     
-    L<POE>,L<Moose>
+L<PJob::Client>,L<POE::Component::Server::TCP>,L<POE::Wheel::Run>,L<Any::Moose>
 
 =head1 AUTHOR
 
-    woosley.xu<redicaps@gmail.com>
+woosley.xu<woosley.xu@gmail.com>
 
 =head1 COPYRIGHT & LICENSE
 

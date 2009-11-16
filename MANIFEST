@@ -7,3 +7,5 @@ dist.ini
 lib/PJob.pod
 lib/PJob/Client.pm
 lib/PJob/Server.pm
+t/00-use.t
+t/01-client-run.t

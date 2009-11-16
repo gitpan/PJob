@@ -2,7 +2,7 @@
 
 =head1 NAME
 
-    PJob -- Poe/Perl Job Server and Client
+PJob -- Poe/Perl Job Server and Client
 
 =head1 DESCRIPTION 
 
@@ -24,7 +24,7 @@ L<PJob::Server>, L<PJob::Client>, L<POE>, L<Any::Moose>
 
 =head1 AUTHOR
 
-woosley.xu<redicaps@gmail.com>
+woosley.xu<woosley.xu@gmail.com>
 
 =head1 COPYRIGHT & LICENSE
 
