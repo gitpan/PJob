@@ -1,5 +1,5 @@
 package PJob::Server;
-our $VERSION = '0.19';
+our $VERSION = '0.29';
 
 
 our $ALIAS = "POE JOB SERVER, Version: $VERSION";
@@ -11,7 +11,7 @@ use Scalar::Util qw/reftype/;
 use List::Util qw/first/;
 use List::MoreUtils qw/uniq/;
 use POE qw/Component::Server::TCP Wheel::Run/;
-#use Smart::Comments;
+
 use constant {
     OUTPUT    => 'Out',
     ERROR     => 'Err',
@@ -121,9 +121,11 @@ sub _usage {
     my $self         = shift;
     my $client       = $_[HEAP]->{client};
     my $remote_ip    = $_[HEAP]->{remote_ip};
-    my $allowed_jobs = $self->job_table->{$remote_ip};
+    my $allowed_jobs = $self->job_table->{$remote_ip};    # jobs for this ip
 
     my $usage_str;
+
+    #dispatched ? fetch from dispatched table, or else fetch from defined jobs
     if ($self->_dispatched) {
         if (@{$allowed_jobs}) {
             $usage_str = 'Usage: ' . join ' ', sort @{$allowed_jobs};
@@ -159,8 +161,13 @@ sub _spawn {
         return;
     }
 
-    $_[KERNEL]->yield('usage') if $input =~ /^usage$/i;
+    if ($input =~ /^usage$/i) {
+        $_[KERNEL]->yield('usage');
+        return;
+    }
 
+
+  #dispatched, fetch jobs from dispatched job table, or else from defined jobs
     my $program;
     if ($self->_dispatched) {
         $program = first { $_ eq $input } $self->job_table->{$remote_ip};
@@ -193,8 +200,8 @@ sub _spawn {
     $client->put("Job $program :::" . $kid->PID . " started.");
 }
 
+# send information to client
 sub send_to_client {
-### @_ : @_
     my $self = shift;
     my $mark = shift;
 
@@ -209,6 +216,7 @@ sub error_event {
 #    $_[HEAP]->{client}->put("Error: $oper failed, message-- $errmsg");
 }
 
+# _sigchld, delete Wheels stored in the HEAP and object
 sub _sigchld {
     my $self = shift;
     my ($pid, $exit) = @_[ARG1, ARG2];
@@ -227,19 +235,11 @@ sub _sigchld {
 sub _close {
 
 #    my $self = shift;
+
 #    delete $_[HEAP]->{job};
 }
 
-# open log file and redirect stdout/stdin to it
-sub _log_redirect {
-    my $self = shift;
-
-    if ($self->logfile) {
-        open STDOUT, '>>', $self->logfile or die $!;
-        open STDERR, ">&STDOUT" or die $!;
-    }
-}
-
+# connected, check max connections, check allowed hosts, yield usage and log information
 sub _client_connect {
     my $self = shift;
     my ($kernel, $heap) = @_[KERNEL, HEAP];
@@ -252,8 +252,6 @@ sub _client_connect {
     if ($self->max_connections > 0) {
         if ($self->{_clients} >= $self->max_connections) {
             $self->send_to_client(ERROR, NOMORECON);
-
-#            $heap->{client}->put("No more connections on this server");
             $kernel->yield('shutdown');
             return;
         }
@@ -277,6 +275,7 @@ sub _client_connect {
         "CONNECTION FROM ${remote_ip}:${remote_port} ESTABLISHED\n");
 }
 
+# when disconnected, log it and reduce clients number by 1
 sub _client_disconnected {
     my $self        = shift;
     my $remote_ip   = $_[HEAP]->{remote_ip};
@@ -286,6 +285,17 @@ sub _client_disconnected {
     $self->{_clients}--;
 }
 
+# open log file and redirect stdout/stdin to it
+sub _log_redirect {
+    my $self = shift;
+
+    if ($self->logfile) {
+        open STDOUT, '>>', $self->logfile or die $!;
+        open STDERR, ">&STDOUT" or die $!;
+    }
+}
+
+# simple log method
 sub log {
     my $self = shift;
     my ($fh, $output) = @_;
@@ -296,6 +306,7 @@ sub log {
     print $fh "$now\t$output\n";
 }
 
+# disaptch jobs to job table
 sub job_dispatch {
     my ($self, %table) = @_;
 
@@ -329,18 +340,20 @@ sub job_dispatch {
 
 # Called before start the server. Dispatch the jobs for $self->allowed_hosts
 sub _append_jobs {
-    my $self      = shift;
+    my $self = shift;
+
     my $comm_jobs = delete $self->job_table->{'*'};
     foreach my $host (@{$self->allowed_hosts}) {
         my @all = uniq @{$self->job_table->{$host}}, @{$comm_jobs};
         $self->job_table->{$host} = [@all];
     }
-
 }
 
+# don't set up any jobs like 'usage/quit'
 sub _check_jobs {
     my $self = shift;
-    if(my $c = first { $_ =~ /^usage|quit$/i } keys %{$self->jobs}){
+
+    if (my $c = first { $_ =~ /^usage|quit$/i } keys %{$self->jobs}) {
         $self->log(*STDERR, "'$c' is defined by default, choose another one");
         exit 1;
     }
@@ -362,6 +375,10 @@ __END__
 =head1 NAME
 
 PJob::Server --- Simple POE Job Server 
+
+=head1 VERSION
+
+This document describes version 0.29 of PJob::Server
 
 =head1 SINOPISYS
 

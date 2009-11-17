@@ -4,6 +4,10 @@
 
 PJob -- Poe/Perl Job Server and Client
 
+=head1 VERSION
+
+This document describes version 0.29 of PJob
+
 =head1 DESCRIPTION 
 
     $ps = PJob::Server->new(jobs => {ls => 'ls /home', ps => 'ps -aux'})
