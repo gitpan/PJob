@@ -1,7 +1,5 @@
 package PJob::Client;
-our $VERSION = '0.29';
-
-
+our $VERSION = '0.31';
 
 use Any::Moose;
 use Term::ANSIColor qw/:constants/;
@@ -100,7 +98,7 @@ sub _get_input_interactive {
     my $self  = shift;
     my $input = $_[ARG0];
     if ($input eq '.') {
-        print _($bold,$yellow,">");
+        print _($bold, $yellow, ">");
         my $k = <>;
         chomp $k;
         $_[HEAP]{server}->put($k);
@@ -145,30 +143,38 @@ sub _server_error {
     $_[KERNEL]->yield('shutdown');
 }
 
-sub _{
-    push @_,$reset;
+sub _ {
+    push @_, $reset;
     return @_;
 }
 
 sub _format_and_output {
-    my ($self,$input) = @_;
-    if($input =~ /^Usage:(.*)$/){
-        print _("Usage:", $bold,$blue,$1,"\n");
+    my ($self, $input) = @_;
+    if ($input =~ /^Usage:(.*)$/) {
+        print _("Usage:", $bold, $blue, $1, "\n");
         return;
-    }elsif($input =~/^Job\s+(.*?)\s+:::(\d+)\sstarted\.$/){
-        print _("Job ", $bold,$green,$1,' :::',$2,$reset," started\n");
+    }
+    elsif ($input =~ /^Job\s+(.*?)\s+:::(\d+)\sstarted\.$/) {
+        print _("Job ", $bold, $green, $1, ' :::', $2, $reset, " started\n");
         return;
-    }elsif($input =~/Out\t(.*)$/){
-        print _($1,"\n");
+    }
+    elsif ($input =~ /Out\t(.*)$/) {
+        print _($1, "\n");
         return;
-    }elsif($input =~/Err\t(.*)$/){
-        print _($yellow,'[stderr] ',$reset,$1,"\n");
+    }
+    elsif ($input =~ /Err\t(.*)$/) {
+        print _($yellow, '[stderr] ', $reset, $1, "\n");
         return;
-    }elsif($input =~/^Job\s+(.*?)\s+:::(\d+)(.*?)(\d+)$/){
-        print _("Job ", $bold,$green,$1,' :::',$2,$reset,$3,$red,$bold,$4,"\n");
+    }
+    elsif ($input =~ /^Job\s+(.*?)\s+:::(\d+)(.*?)(\d+)$/) {
+        print _(
+            "Job ", $bold, $green, $1,    ' :::', $2,
+            $reset, $3,    $red,   $bold, $4,     "\n"
+        );
         return;
-    }else{
-        print $input,"\n";
+    }
+    else {
+        print $input, "\n";
     }
 }
 
@@ -186,9 +192,9 @@ PJob::Client -- Simple PJob client for PJob Server
 
 =head1 VERSION
 
-This document describes version 0.29 of PJob::Client
+This document describes version 0.31 of PJob::Client
 
-=head1 SINOPISYS
+=head1 SYNOPSIS
 
     $pc =  PJob::Client->new(server => 'localhost',port => '10086')
                        ->run();

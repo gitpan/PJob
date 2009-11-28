@@ -1,6 +1,5 @@
 package PJob::Server;
-our $VERSION = '0.29';
-
+our $VERSION = '0.31';
 
 our $ALIAS = "POE JOB SERVER, Version: $VERSION";
 
@@ -11,6 +10,7 @@ use Scalar::Util qw/reftype/;
 use List::Util qw/first/;
 use List::MoreUtils qw/uniq/;
 use POE qw/Component::Server::TCP Wheel::Run/;
+use Smart::Comments;
 
 use constant {
     OUTPUT    => 'Out',
@@ -73,8 +73,14 @@ has 'max_connections' => (
     default => '-1',
 );
 
+has '_interactive' => (
+    is      => 'rw',
+    isa     => 'ArrayRef',
+    default => sub { [] },
+);
+
 # add programs to the job server
-sub add() {
+sub add {
     my ($self, @programs) = @_;
 
     foreach my $p (@programs) {
@@ -84,6 +90,22 @@ sub add() {
         }
         elsif (!reftype $p) {
             $self->jobs({%{$self->jobs}, $p => $p});
+        }
+    }
+    return $self;
+}
+
+sub add_interactive {
+    my ($self, @programs) = @_;
+    foreach my $p (@programs) {
+        if (reftype $p && reftype $p eq 'HASH') {
+            $self->jobs({%{$self->jobs}, %{$p}});
+            push @{$self->_interactive}, keys %{$p};
+            next;
+        }
+        elsif (!reftype $p) {
+            $self->jobs({%{$self->jobs}, $p => $p});
+            push @{$self->_interactive}, $p;
         }
     }
     return $self;
@@ -166,7 +188,6 @@ sub _spawn {
         return;
     }
 
-
   #dispatched, fetch jobs from dispatched job table, or else from defined jobs
     my $program;
     if ($self->_dispatched) {
@@ -182,6 +203,8 @@ sub _spawn {
         return;
     }
 
+    my $interactive = 1 if first { $_ eq $input } @{$self->_interactive};
+
     $self->log(*STDOUT, "$remote_ip:$remote_port : $program  \n")
       if $self->log_commands;
 
@@ -190,6 +213,7 @@ sub _spawn {
         StdoutEvent => 'job_stdout',
         StderrEvent => 'job_stderr',
         CloseEvent  => 'job_close',
+        Conduit     => $interactive ? 'pty' : 'pipe',
     );
 
     $heap->{job}->{$client} = $kid;
@@ -359,11 +383,12 @@ sub _check_jobs {
     }
 }
 
-sub _ {
-    my $output = shift;
-    $output = '\.' if $output =~ /^\.$/;
-    return $output;
-}
+#
+#sub _ {
+#    my $output = shift;
+#    $output = '\.' if $output =~ /^\.$/;
+#    return $output;
+#}
 
 no Any::Moose;
 __PACKAGE__->meta->make_immutable;
@@ -378,9 +403,9 @@ PJob::Server --- Simple POE Job Server
 
 =head1 VERSION
 
-This document describes version 0.29 of PJob::Server
+This document describes version 0.31 of PJob::Server
 
-=head1 SINOPISYS
+=head1 SYNOPSIS
 
     use PJob::Server;
     my $server = PJob::Server->new(port => '10086');
@@ -408,7 +433,11 @@ Create a PJob::Server object. The available arguments are:
 
 =item B<add>
 
-add some programs, it receive both hashref and scalar. The key of the hashref is alias of the program. when scalar, the alias and the program have the same value.
+Add some programs, it receive both hashref and scalar. The key of the hashref is alias of the program. when scalar, the alias and the program have the same value.
+
+=item B<add_interactive>
+
+Add interactive programs. Use Conduit => 'pty' in POE::Wheel::Run to convince the programs that they are interacting with terminals.
 
 =item B<job_dispatch>
 
@@ -420,7 +449,7 @@ Any hosts dispatched with job_dispatch is considered to be an allowed host.
 
 =item B<run>
 
-run the server, no argument needed.
+Run the server, no arguments needed.
 
 =item B<quit/usage>
 
