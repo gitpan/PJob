@@ -7,7 +7,7 @@ PJob -- Poe/Perl Job Server and Client
 
 =head1 VERSION
 
-This document describes version 0.31 of PJob
+This document describes version 0.37 of PJob
 
 =head1 SYNOPSIS
 

@@ -1,5 +1,5 @@
 package PJob::Server;
-our $VERSION = '0.31';
+our $VERSION = '0.37';
 
 our $ALIAS = "POE JOB SERVER, Version: $VERSION";
 
@@ -10,7 +10,7 @@ use Scalar::Util qw/reftype/;
 use List::Util qw/first/;
 use List::MoreUtils qw/uniq/;
 use POE qw/Component::Server::TCP Wheel::Run/;
-use Smart::Comments;
+#use Smart::Comments;
 
 use constant {
     OUTPUT    => 'Out',
@@ -403,7 +403,7 @@ PJob::Server --- Simple POE Job Server
 
 =head1 VERSION
 
-This document describes version 0.31 of PJob::Server
+This document describes version 0.37 of PJob::Server
 
 =head1 SYNOPSIS
 

@@ -20,4 +20,4 @@ requires:
   Term::ANSIColor: 0
 resources:
   repository: http://github.com/woosley/Perl-PJob
-version: 0.31
+version: 0.37
