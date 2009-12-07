@@ -1,4 +1,10 @@
+package PJob
+use strict;
+use warnings;
 
+our $VERSION=0.41;
+1;
+__END__
 =pod
 
 =head1 NAME
@@ -7,7 +13,7 @@ PJob -- Poe/Perl Job Server and Client
 
 =head1 VERSION
 
-This document describes version 0.37 of PJob
+This document describes version 0.41 of PJob
 
 =head1 SYNOPSIS
 

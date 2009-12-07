@@ -4,7 +4,7 @@ META.yml
 Makefile.PL
 README
 dist.ini
-lib/PJob.pod
+lib/PJob.pm
 lib/PJob/Client.pm
 lib/PJob/Server.pm
 t/00-use.t

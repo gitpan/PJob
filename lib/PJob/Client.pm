@@ -1,5 +1,5 @@
 package PJob::Client;
-our $VERSION = '0.37';
+our $VERSION = '0.41';
 
 use Any::Moose;
 use Term::ANSIColor qw/:constants/;
@@ -192,7 +192,7 @@ PJob::Client -- Simple PJob client for PJob Server
 
 =head1 VERSION
 
-This document describes version 0.37 of PJob::Client
+This document describes version 0.41 of PJob::Client
 
 =head1 SYNOPSIS
 

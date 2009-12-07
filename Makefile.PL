@@ -9,7 +9,7 @@ WriteMakefile(
   NAME      => 'PJob',
   AUTHOR    => "woosley\.xu",
   ABSTRACT  => "POE\ Job\ Server\/Client",
-  VERSION   => '0.37',
+  VERSION   => '0.41',
   EXE_FILES => [ qw() ],
   (eval { ExtUtils::MakeMaker->VERSION(6.31) } ? (LICENSE => 'perl') : ()),
   PREREQ_PM    => {

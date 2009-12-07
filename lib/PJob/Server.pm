@@ -1,5 +1,5 @@
 package PJob::Server;
-our $VERSION = '0.37';
+our $VERSION = '0.41';
 
 our $ALIAS = "POE JOB SERVER, Version: $VERSION";
 
@@ -403,7 +403,7 @@ PJob::Server --- Simple POE Job Server
 
 =head1 VERSION
 
-This document describes version 0.37 of PJob::Server
+This document describes version 0.41 of PJob::Server
 
 =head1 SYNOPSIS
 
@@ -416,7 +416,7 @@ This document describes version 0.37 of PJob::Server
 
 =head1 DESCRIPTION
     
-PJob::Server is a simple POE Job Server module, it provide you some api to write a job server very quickly.
+PJob::Server is a simple POE Job Server module, it provides you some api to write a job server very quickly.
 
 =over 
 
